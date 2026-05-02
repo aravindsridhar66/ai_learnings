@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Prevents accidental direct pushes to main. Admins can bypass with --no-verify.
+set -euo pipefail
+
+while IFS=' ' read -r local_ref _ remote_ref _; do
+  if [[ "$remote_ref" == "refs/heads/main" ]]; then
+    echo "error: direct push to main is not allowed"
+    echo "       create a branch, open a PR, and merge instead"
+    echo "       (admins can bypass with --no-verify)"
+    exit 1
+  fi
+done
+
+exit 0
