@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(mv /Users/aravindsridhar/Projects/Agentic/exchange_rates /Users/aravindsridhar/Projects/Agentic/ai_learnings)",
-      "Bash(git -C /Users/aravindsridhar/Projects/Agentic/ai_learnings remote -v)",
-      "Bash(git -C /Users/aravindsridhar/Projects/Agentic/ai_learnings status)"
-    ]
-  }
-}
