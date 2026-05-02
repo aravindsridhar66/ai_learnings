@@ -76,7 +76,12 @@ app.get("/infer", (req, res) => {
   res.json({ code });
 });
 
-const PORT = process.env.PORT ?? 3000;
-app.listen(PORT, () => {
-  console.log(`Currency Converter running at http://localhost:${PORT}`);
-});
+export { app };
+
+// Only bind to a port when run directly
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const PORT = process.env.PORT ?? 3000;
+  app.listen(PORT, () => {
+    console.log(`Currency Converter running at http://localhost:${PORT}`);
+  });
+}
