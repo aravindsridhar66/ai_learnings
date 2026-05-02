@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Currency Converter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -18,13 +19,138 @@
       padding: 2rem;
     }
 
+    .layout {
+      display: flex;
+      align-items: flex-start;
+      gap: 2rem;
+      width: 100%;
+      max-width: 1040px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Chart panel ─────────────────────────────── */
+    .chart-panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      padding: 1.75rem;
+      width: 480px;
+      flex-shrink: 0;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+      min-height: 380px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.25rem;
+    }
+
+    .chart-panel-subtitle {
+      font-size: 0.8125rem;
+      color: #64748b;
+      margin-bottom: 1.25rem;
+    }
+
+    .chart-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      color: #475569;
+    }
+
+    .chart-placeholder svg {
+      opacity: 0.35;
+    }
+
+    .chart-placeholder p {
+      font-size: 0.875rem;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .chart-loading {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      font-size: 0.875rem;
+      color: #475569;
+    }
+    .chart-loading.visible { display: flex; }
+
+    .chart-spinner {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid #334155;
+      border-top-color: #818cf8;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #chart-container {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+    }
+    #chart-container.visible { display: flex; }
+
+    .chart-pair-label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.04em;
+    }
+
+    .chart-stats {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .chart-stat-label {
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 0.125rem;
+    }
+
+    .chart-stat-value {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .chart-stat-value.up   { color: #4ade80; }
+    .chart-stat-value.down { color: #f87171; }
+
+    .chart-wrap {
+      flex: 1;
+      position: relative;
+      min-height: 220px;
+    }
+
+    /* ── Converter card ──────────────────────────── */
     .card {
       background: #1e293b;
       border: 1px solid #334155;
       border-radius: 1rem;
       padding: 2.5rem;
-      width: 100%;
-      max-width: 480px;
+      width: 480px;
+      flex-shrink: 0;
       box-shadow: 0 25px 50px rgba(0,0,0,0.4);
     }
 
@@ -155,39 +281,87 @@
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Currency Converter</h1>
-    <p class="subtitle">Type a currency name or 3-letter code</p>
+  <div class="layout">
 
-    <div class="field">
-      <label>From</label>
-      <input id="from" type="text" placeholder="e.g. Euros, USD, Indian Rupees" autocomplete="off" />
-      <div class="badge-row" id="from-badge"></div>
+    <!-- Chart panel -->
+    <div class="chart-panel">
+      <div class="chart-panel-title">Rate History</div>
+      <p class="chart-panel-subtitle">90-day exchange rate trend</p>
+
+      <div class="chart-placeholder" id="chart-placeholder">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <p>Convert a currency pair to see<br>the 90-day rate trend here</p>
+      </div>
+
+      <div class="chart-loading" id="chart-loading">
+        <div class="chart-spinner"></div>
+        Loading history…
+      </div>
+
+      <div id="chart-container">
+        <div class="chart-pair-label" id="chart-pair-label"></div>
+        <div class="chart-stats" id="chart-stats">
+          <div>
+            <div class="chart-stat-label">Current</div>
+            <div class="chart-stat-value" id="stat-current"></div>
+          </div>
+          <div>
+            <div class="chart-stat-label">90d High</div>
+            <div class="chart-stat-value" id="stat-high"></div>
+          </div>
+          <div>
+            <div class="chart-stat-label">90d Low</div>
+            <div class="chart-stat-value" id="stat-low"></div>
+          </div>
+          <div>
+            <div class="chart-stat-label">Change</div>
+            <div class="chart-stat-value" id="stat-change"></div>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="rateChart"></canvas>
+        </div>
+      </div>
     </div>
 
-    <div class="swap-row">
-      <button class="swap-btn" id="swap">⇅ Swap</button>
+    <!-- Converter card -->
+    <div class="card">
+      <h1>Currency Converter</h1>
+      <p class="subtitle">Type a currency name or 3-letter code</p>
+
+      <div class="field">
+        <label>From</label>
+        <input id="from" type="text" placeholder="e.g. Euros, USD, Indian Rupees" autocomplete="off" />
+        <div class="badge-row" id="from-badge"></div>
+      </div>
+
+      <div class="swap-row">
+        <button class="swap-btn" id="swap">⇅ Swap</button>
+      </div>
+
+      <div class="field">
+        <label>To</label>
+        <input id="to" type="text" placeholder="e.g. British Pounds, JPY, Dollars" autocomplete="off" />
+        <div class="badge-row" id="to-badge"></div>
+      </div>
+
+      <div class="field">
+        <label>Amount</label>
+        <input id="amount" type="number" min="0.01" step="any" placeholder="100" value="100" />
+      </div>
+
+      <button class="convert-btn" id="convert-btn">Convert</button>
+
+      <div class="error-msg" id="error-msg"></div>
+
+      <div class="result" id="result">
+        <div class="result-amount" id="result-amount"></div>
+        <div class="result-meta" id="result-meta"></div>
+      </div>
     </div>
 
-    <div class="field">
-      <label>To</label>
-      <input id="to" type="text" placeholder="e.g. British Pounds, JPY, Dollars" autocomplete="off" />
-      <div class="badge-row" id="to-badge"></div>
-    </div>
-
-    <div class="field">
-      <label>Amount</label>
-      <input id="amount" type="number" min="0.01" step="any" placeholder="100" value="100" />
-    </div>
-
-    <button class="convert-btn" id="convert-btn">Convert</button>
-
-    <div class="error-msg" id="error-msg"></div>
-
-    <div class="result" id="result">
-      <div class="result-amount" id="result-amount"></div>
-      <div class="result-meta" id="result-meta"></div>
-    </div>
   </div>
 
   <script>
@@ -202,7 +376,17 @@
     const resultMeta  = document.getElementById('result-meta');
     const errorMsg    = document.getElementById('error-msg');
 
+    const chartPlaceholder = document.getElementById('chart-placeholder');
+    const chartLoading     = document.getElementById('chart-loading');
+    const chartContainer   = document.getElementById('chart-container');
+    const chartPairLabel   = document.getElementById('chart-pair-label');
+    const statCurrent      = document.getElementById('stat-current');
+    const statHigh         = document.getElementById('stat-high');
+    const statLow          = document.getElementById('stat-low');
+    const statChange       = document.getElementById('stat-change');
+
     let debounceTimer = null;
+    let rateChart = null;
 
     const RATE_MIN = 1e-10;
 
@@ -210,15 +394,8 @@
       if (rate == null || typeof rate !== 'number' || isNaN(rate)) return 'N/A';
       if (rate === 0) return '0';
       if (rate < RATE_MIN) return `< ${RATE_MIN}`;
-      // For very small values use toPrecision to preserve significant digits
-      // rather than toFixed which would show all zeros
       if (rate < 0.001) return parseFloat(rate.toPrecision(6)).toString();
       return rate.toFixed(6);
-    }
-
-    function renderBadge(el, code) {
-      if (!el.value.trim()) { el.nextSibling; badge.innerHTML = ''; return; }
-      // handled by updateBadge
     }
 
     async function updateBadge(input, badgeEl) {
@@ -254,6 +431,129 @@
       updateBadge(toInput, toBadge);
     });
 
+    function renderChart(from, to, dates, rates) {
+      const validRates = rates.filter(r => r != null);
+      if (validRates.length === 0) return;
+
+      const first  = validRates[0];
+      const last   = validRates[validRates.length - 1];
+      const high   = Math.max(...validRates);
+      const low    = Math.min(...validRates);
+      const change = ((last - first) / first) * 100;
+      const sign   = change >= 0 ? '+' : '';
+
+      chartPairLabel.textContent = `${from} / ${to}`;
+      statCurrent.textContent = formatRate(last);
+      statHigh.textContent    = formatRate(high);
+      statLow.textContent     = formatRate(low);
+      statChange.textContent  = `${sign}${change.toFixed(2)}%`;
+      statChange.className    = `chart-stat-value ${change >= 0 ? 'up' : 'down'}`;
+
+      const labels = dates.map(d => {
+        const date = new Date(d + 'T00:00:00');
+        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      });
+
+      const ctx = document.getElementById('rateChart').getContext('2d');
+
+      if (rateChart) {
+        rateChart.data.labels = labels;
+        rateChart.data.datasets[0].data = rates;
+        rateChart.data.datasets[0].label = `${from}/${to}`;
+        rateChart.update('active');
+        return;
+      }
+
+      rateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: `${from}/${to}`,
+            data: rates,
+            borderColor: '#818cf8',
+            backgroundColor: 'rgba(129, 140, 248, 0.08)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: '#818cf8',
+            borderWidth: 2,
+            spanGaps: true,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              backgroundColor: '#0f172a',
+              borderColor: '#334155',
+              borderWidth: 1,
+              titleColor: '#64748b',
+              bodyColor: '#e2e8f0',
+              padding: 10,
+              callbacks: {
+                label: (item) => ` ${formatRate(item.parsed.y)} ${to}`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: '#1e293b' },
+              border: { color: '#334155' },
+              ticks: {
+                color: '#64748b',
+                maxTicksLimit: 7,
+                maxRotation: 0,
+                font: { size: 11 },
+              },
+            },
+            y: {
+              position: 'right',
+              grid: { color: '#334155' },
+              border: { color: '#334155' },
+              ticks: {
+                color: '#64748b',
+                font: { size: 11 },
+                callback: (v) => formatRate(v),
+              },
+            },
+          },
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        },
+      });
+    }
+
+    function showChartLoading() {
+      chartPlaceholder.style.display = 'none';
+      chartContainer.classList.remove('visible');
+      chartLoading.classList.add('visible');
+    }
+
+    async function fetchHistory(fromVal, toVal) {
+      try {
+        const res = await fetch(`/history?from=${encodeURIComponent(fromVal)}&to=${encodeURIComponent(toVal)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.dates || !data.rates) {
+          chartLoading.classList.remove('visible');
+          chartPlaceholder.style.display = 'flex';
+          return;
+        }
+
+        chartLoading.classList.remove('visible');
+        chartContainer.classList.add('visible');
+        renderChart(data.from, data.to, data.dates, data.rates);
+      } catch (_) {
+        chartLoading.classList.remove('visible');
+        chartPlaceholder.style.display = 'flex';
+      }
+    }
+
     convertBtn.addEventListener('click', async () => {
       errorMsg.classList.remove('visible');
       resultEl.classList.remove('visible');
@@ -284,6 +584,17 @@
           resultAmt.textContent = `${converted} ${data.to}`;
           resultMeta.textContent = `${data.amount.toLocaleString()} ${data.from} · Rate: 1 ${data.from} = ${formatRate(data.rate)} ${data.to}`;
           resultEl.classList.add('visible');
+
+          // Show loading state and hold the button disabled while we wait,
+          // then fetch history. The 3s pause ensures the upstream rate-limit
+          // window from /convert has cleared before /history fires.
+          showChartLoading();
+          convertBtn.textContent = 'Loading chart…';
+          const fromVal = fromInput.value;
+          const toVal   = toInput.value;
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          await fetchHistory(fromVal, toVal);
+          return; // fall through to finally
         }
       } catch (err) {
         errorMsg.textContent = 'Network error — is the server running?';

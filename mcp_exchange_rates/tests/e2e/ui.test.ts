@@ -14,6 +14,12 @@ async function mockConvertError(page: Page, error: string, status = 400) {
   );
 }
 
+async function mockHistory(page: Page, payload: Record<string, unknown>, status = 200) {
+  await page.route("/history**", (route) =>
+    route.fulfill({ status, contentType: "application/json", body: JSON.stringify(payload) })
+  );
+}
+
 // ── Page load ─────────────────────────────────────────────────────────────────
 
 test("page loads with correct title", async ({ page }) => {
@@ -110,6 +116,123 @@ test("shows error on upstream API failure", async ({ page }) => {
   await expect(page.locator("#error-msg")).toBeVisible();
   await expect(page.locator("#error-msg")).toContainText("403");
 });
+
+// ── Chart panel ───────────────────────────────────────────────────────────────
+
+test("chart placeholder is visible on load, chart container is hidden", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#chart-placeholder")).toBeVisible();
+  await expect(page.locator("#chart-container")).not.toBeVisible();
+});
+
+test("convert button shows loading state and is disabled while chart loads", async ({ page }) => {
+  await page.clock.install();
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, { from: "USD", to: "EUR", dates: ["2026-04-01"], rates: [0.92] });
+  await page.goto("/");
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await expect(page.locator("#result")).toBeVisible();
+  await expect(page.locator("#convert-btn")).toBeDisabled();
+  await expect(page.locator("#convert-btn")).toHaveText("Loading chart…");
+});
+
+test("chart renders and placeholder hides after successful conversion", async ({ page }) => {
+  await page.clock.install();
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, {
+    from: "USD", to: "EUR",
+    dates: ["2026-04-01", "2026-04-02", "2026-04-03"],
+    rates: [0.91, 0.92, 0.93],
+  });
+  await page.goto("/");
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await expect(page.locator("#result")).toBeVisible();
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#chart-container")).toBeVisible();
+  await expect(page.locator("#chart-placeholder")).not.toBeVisible();
+  await expect(page.locator("#chart-pair-label")).toHaveText("USD / EUR");
+});
+
+test("convert button is re-enabled after chart loads", async ({ page }) => {
+  await page.clock.install();
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, { from: "USD", to: "EUR", dates: ["2026-04-01"], rates: [0.92] });
+  await page.goto("/");
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#convert-btn")).toBeEnabled();
+  await expect(page.locator("#convert-btn")).toHaveText("Convert");
+});
+
+test("chart stats are populated after conversion", async ({ page }) => {
+  await page.clock.install();
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, {
+    from: "USD", to: "EUR",
+    dates: ["2026-04-01", "2026-04-02", "2026-04-03"],
+    rates: [0.91, 0.93, 0.92],
+  });
+  await page.goto("/");
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#stat-current")).not.toBeEmpty();
+  await expect(page.locator("#stat-high")).not.toBeEmpty();
+  await expect(page.locator("#stat-low")).not.toBeEmpty();
+  await expect(page.locator("#stat-change")).not.toBeEmpty();
+});
+
+test("chart placeholder is restored when history fetch returns an error", async ({ page }) => {
+  await page.clock.install();
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, { error: "API error: 429 Too Many Requests" }, 502);
+  await page.goto("/");
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await expect(page.locator("#result")).toBeVisible();
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#chart-placeholder")).toBeVisible();
+  await expect(page.locator("#chart-container")).not.toBeVisible();
+});
+
+test("chart pair label updates when a second conversion uses a different pair", async ({ page }) => {
+  await page.clock.install();
+  await page.goto("/");
+
+  await mockConvert(page, { from: "USD", to: "EUR", amount: 100, converted_amount: 92.5, rate: 0.925 });
+  await mockHistory(page, { from: "USD", to: "EUR", dates: ["2026-04-01"], rates: [0.92] });
+  await page.fill("#from", "USD");
+  await page.fill("#to", "EUR");
+  await page.fill("#amount", "100");
+  await page.click("#convert-btn");
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#chart-pair-label")).toHaveText("USD / EUR");
+
+  await page.unrouteAll();
+  await mockConvert(page, { from: "GBP", to: "JPY", amount: 50, converted_amount: 9500, rate: 190 });
+  await mockHistory(page, { from: "GBP", to: "JPY", dates: ["2026-04-01"], rates: [190] });
+  await page.fill("#from", "GBP");
+  await page.fill("#to", "JPY");
+  await page.fill("#amount", "50");
+  await page.click("#convert-btn");
+  await page.clock.fastForward(3000);
+  await expect(page.locator("#chart-pair-label")).toHaveText("GBP / JPY");
+});
+
+// ── Error states ──────────────────────────────────────────────────────────────
 
 test("hides previous error when a new successful conversion runs", async ({ page }) => {
   // First request fails

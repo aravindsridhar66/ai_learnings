@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
-import { app } from "../../src/server.js";
+import { app, historyCache, HISTORY_CACHE_TTL_MS } from "../../src/server.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -14,7 +14,7 @@ function makeApiResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
-beforeEach(() => mockFetch.mockReset());
+beforeEach(() => { mockFetch.mockReset(); historyCache.clear(); });
 afterEach(() => vi.restoreAllMocks());
 
 // ── GET /infer ────────────────────────────────────────────────────────────────
@@ -152,5 +152,153 @@ describe("POST /convert — upstream errors", () => {
     const res = await request(app).post("/convert").send({ from: "USD", to: "EUR", amount: 100 });
     expect(res.status).toBe(502);
     expect(res.body.error).toMatch(/invalid api key/i);
+  });
+});
+
+// ── GET /history — helpers ────────────────────────────────────────────────────
+
+function makeTimeframeResponse(source: string, target: string, dailyRates: Record<string, number>) {
+  const pairKey = `${source}${target}`;
+  return {
+    success: true,
+    timeframe: true,
+    source,
+    quotes: Object.fromEntries(
+      Object.entries(dailyRates).map(([date, rate]) => [date, { [pairKey]: rate }])
+    ),
+  };
+}
+
+function mockTimeframeOnce(source: string, target: string, dailyRates: Record<string, number>) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: async () => makeTimeframeResponse(source, target, dailyRates),
+  });
+}
+
+// ── GET /history — validation ─────────────────────────────────────────────────
+
+describe("GET /history — validation", () => {
+  it("rejects unknown from currency", async () => {
+    const res = await request(app).get("/history?from=banana&to=USD");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/banana/);
+  });
+
+  it("rejects unknown to currency", async () => {
+    const res = await request(app).get("/history?from=USD&to=xyz123");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/xyz123/);
+  });
+});
+
+// ── GET /history — success ────────────────────────────────────────────────────
+
+describe("GET /history — success", () => {
+  it("returns dates and rates arrays", async () => {
+    mockTimeframeOnce("USD", "EUR", { "2026-04-01": 0.91, "2026-04-02": 0.92 });
+
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ from: "USD", to: "EUR" });
+    expect(res.body.dates).toEqual(["2026-04-01", "2026-04-02"]);
+    expect(res.body.rates).toEqual([0.91, 0.92]);
+  });
+
+  it("resolves currency names to ISO codes", async () => {
+    mockTimeframeOnce("EUR", "JPY", { "2026-04-01": 162.5 });
+
+    const res = await request(app).get("/history?from=euros&to=yen");
+    expect(res.status).toBe(200);
+    expect(res.body.from).toBe("EUR");
+    expect(res.body.to).toBe("JPY");
+  });
+
+  it("returns dates sorted chronologically", async () => {
+    mockTimeframeOnce("USD", "GBP", {
+      "2026-04-03": 0.79,
+      "2026-04-01": 0.77,
+      "2026-04-02": 0.78,
+    });
+
+    const res = await request(app).get("/history?from=USD&to=GBP");
+    expect(res.status).toBe(200);
+    expect(res.body.dates).toEqual(["2026-04-01", "2026-04-02", "2026-04-03"]);
+    expect(res.body.rates).toEqual([0.77, 0.78, 0.79]);
+  });
+});
+
+// ── GET /history — caching ────────────────────────────────────────────────────
+
+describe("GET /history — caching", () => {
+  it("serves second request from cache without calling fetch again", async () => {
+    mockTimeframeOnce("USD", "EUR", { "2026-04-01": 0.91 });
+
+    await request(app).get("/history?from=USD&to=EUR");
+    await request(app).get("/history?from=USD&to=EUR");
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fetches after the cache TTL expires", async () => {
+    mockTimeframeOnce("USD", "EUR", { "2026-04-01": 0.91 });
+    mockTimeframeOnce("USD", "EUR", { "2026-04-01": 0.92 });
+
+    await request(app).get("/history?from=USD&to=EUR");
+
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + HISTORY_CACHE_TTL_MS + 1);
+
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(res.body.rates).toEqual([0.92]);
+  });
+
+  it("caches pairs independently", async () => {
+    mockTimeframeOnce("USD", "EUR", { "2026-04-01": 0.91 });
+    mockTimeframeOnce("USD", "GBP", { "2026-04-01": 0.79 });
+
+    await request(app).get("/history?from=USD&to=EUR");
+    await request(app).get("/history?from=USD&to=GBP");
+    await request(app).get("/history?from=USD&to=EUR"); // cache hit
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── GET /history — upstream errors ───────────────────────────────────────────
+
+describe("GET /history — upstream errors", () => {
+  it("returns 502 on network failure", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/network/i);
+  });
+
+  it("returns 502 on non-OK HTTP response", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429, statusText: "Too Many Requests" });
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/429/);
+  });
+
+  it("returns 502 when API success flag is false", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: false, error: { info: "Invalid access key" } }),
+    });
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/invalid access key/i);
+  });
+
+  it("returns 502 when quotes field is missing", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+    const res = await request(app).get("/history?from=USD&to=EUR");
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/no quote data/i);
   });
 });
