@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Currency Converter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+      color: #f8fafc;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: #64748b;
+      margin-bottom: 2rem;
+    }
+
+    .field { margin-bottom: 1.25rem; }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+
+    input {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      color: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus { border-color: #6366f1; }
+
+    .badge-row {
+      min-height: 1.25rem;
+      margin-top: 0.375rem;
+      font-size: 0.75rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .badge.found    { background: #14532d; color: #86efac; }
+    .badge.notfound { background: #450a0a; color: #fca5a5; }
+
+    .swap-row {
+      display: flex;
+      justify-content: center;
+      margin: 0.5rem 0 1rem;
+    }
+
+    .swap-btn {
+      background: #334155;
+      border: none;
+      border-radius: 9999px;
+      padding: 0.5rem 1.25rem;
+      color: #94a3b8;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .swap-btn:hover { background: #475569; color: #e2e8f0; }
+
+    .convert-btn {
+      width: 100%;
+      background: #6366f1;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.875rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .convert-btn:hover:not(:disabled) { background: #4f46e5; }
+    .convert-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .result {
+      margin-top: 1.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      display: none;
+    }
+    .result.visible { display: block; }
+
+    .result-amount {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #a5b4fc;
+      line-height: 1;
+    }
+
+    .result-meta {
+      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+      color: #64748b;
+    }
+
+    .error-msg {
+      margin-top: 1rem;
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      color: #fca5a5;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Currency Converter</h1>
+    <p class="subtitle">Type a currency name or 3-letter code</p>
+
+    <div class="field">
+      <label>From</label>
+      <input id="from" type="text" placeholder="e.g. Euros, USD, Indian Rupees" autocomplete="off" />
+      <div class="badge-row" id="from-badge"></div>
+    </div>
+
+    <div class="swap-row">
+      <button class="swap-btn" id="swap">⇅ Swap</button>
+    </div>
+
+    <div class="field">
+      <label>To</label>
+      <input id="to" type="text" placeholder="e.g. British Pounds, JPY, Dollars" autocomplete="off" />
+      <div class="badge-row" id="to-badge"></div>
+    </div>
+
+    <div class="field">
+      <label>Amount</label>
+      <input id="amount" type="number" min="0.01" step="any" placeholder="100" value="100" />
+    </div>
+
+    <button class="convert-btn" id="convert-btn">Convert</button>
+
+    <div class="error-msg" id="error-msg"></div>
+
+    <div class="result" id="result">
+      <div class="result-amount" id="result-amount"></div>
+      <div class="result-meta" id="result-meta"></div>
+    </div>
+  </div>
+
+  <script>
+    const fromInput   = document.getElementById('from');
+    const toInput     = document.getElementById('to');
+    const amountInput = document.getElementById('amount');
+    const fromBadge   = document.getElementById('from-badge');
+    const toBadge     = document.getElementById('to-badge');
+    const convertBtn  = document.getElementById('convert-btn');
+    const resultEl    = document.getElementById('result');
+    const resultAmt   = document.getElementById('result-amount');
+    const resultMeta  = document.getElementById('result-meta');
+    const errorMsg    = document.getElementById('error-msg');
+
+    let debounceTimer = null;
+
+    const RATE_MIN = 1e-10;
+
+    function formatRate(rate) {
+      if (rate == null || typeof rate !== 'number' || isNaN(rate)) return 'N/A';
+      if (rate === 0) return '0';
+      if (rate < RATE_MIN) return `< ${RATE_MIN}`;
+      // For very small values use toPrecision to preserve significant digits
+      // rather than toFixed which would show all zeros
+      if (rate < 0.001) return parseFloat(rate.toPrecision(6)).toString();
+      return rate.toFixed(6);
+    }
+
+    function renderBadge(el, code) {
+      if (!el.value.trim()) { el.nextSibling; badge.innerHTML = ''; return; }
+      // handled by updateBadge
+    }
+
+    async function updateBadge(input, badgeEl) {
+      const q = input.value.trim();
+      if (!q) { badgeEl.innerHTML = ''; return; }
+      const res = await fetch(`/infer?q=${encodeURIComponent(q)}`);
+      const { code } = await res.json();
+      if (code) {
+        badgeEl.innerHTML = `<span class="badge found">${code}</span>`;
+      } else {
+        badgeEl.innerHTML = `<span class="badge notfound">Not recognised</span>`;
+      }
+    }
+
+    function debounce(fn, ms) {
+      return (...args) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    const debouncedFrom = debounce(() => updateBadge(fromInput, fromBadge), 250);
+    const debouncedTo   = debounce(() => updateBadge(toInput, toBadge), 250);
+
+    fromInput.addEventListener('input', debouncedFrom);
+    toInput.addEventListener('input', debouncedTo);
+
+    document.getElementById('swap').addEventListener('click', () => {
+      const tmp = fromInput.value;
+      fromInput.value = toInput.value;
+      toInput.value = tmp;
+      updateBadge(fromInput, fromBadge);
+      updateBadge(toInput, toBadge);
+    });
+
+    convertBtn.addEventListener('click', async () => {
+      errorMsg.classList.remove('visible');
+      resultEl.classList.remove('visible');
+      convertBtn.disabled = true;
+      convertBtn.textContent = 'Converting…';
+
+      try {
+        const res = await fetch('/convert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: fromInput.value,
+            to: toInput.value,
+            amount: parseFloat(amountInput.value),
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorMsg.textContent = data.error ?? 'Something went wrong';
+          errorMsg.classList.add('visible');
+        } else {
+          const converted = typeof data.converted_amount === 'number'
+            ? data.converted_amount.toLocaleString(undefined, { maximumFractionDigits: 4 })
+            : data.converted_amount;
+
+          resultAmt.textContent = `${converted} ${data.to}`;
+          resultMeta.textContent = `${data.amount.toLocaleString()} ${data.from} · Rate: 1 ${data.from} = ${formatRate(data.rate)} ${data.to}`;
+          resultEl.classList.add('visible');
+        }
+      } catch (err) {
+        errorMsg.textContent = 'Network error — is the server running?';
+        errorMsg.classList.add('visible');
+      } finally {
+        convertBtn.disabled = false;
+        convertBtn.textContent = 'Convert';
+      }
+    });
+  </script>
+</body>
+</html>

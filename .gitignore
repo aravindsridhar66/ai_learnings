@@ -30,5 +30,15 @@ env/
 .DS_Store
 Thumbs.db
 
+# Dependencies
+node_modules/
+
+# Test output
+test-results/
+playwright-report/
+
+# Build output
+dist/
+
 # Logs
 *.log
