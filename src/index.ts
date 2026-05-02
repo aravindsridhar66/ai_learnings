@@ -26,7 +26,13 @@ server.tool(
   async ({ amount, from, to }) => {
     const fromUpper = from.toUpperCase();
     const toUpper = to.toUpperCase();
-    const url = `https://v6.exchangerate-api.com/v6/${API_KEY}/pair/${fromUpper}/${toUpper}/${amount}`;
+    const params = new URLSearchParams({
+      access_key: API_KEY,
+      from: fromUpper,
+      to: toUpper,
+      amount: String(amount),
+    });
+    const url = `https://api.exchangerate.host/convert?${params}`;
 
     let response: Response;
     try {
@@ -47,13 +53,18 @@ server.tool(
 
     const data = (await response.json()) as Record<string, unknown>;
 
-    if (data["result"] !== "success") {
-      const errorType = typeof data["error-type"] === "string" ? data["error-type"] : "unknown-error";
+    if (data["success"] !== true) {
+      const error = data["error"];
+      const message = typeof error === "object" && error !== null && "info" in error
+        ? String((error as Record<string, unknown>)["info"])
+        : "unknown error";
       return {
         isError: true,
-        content: [{ type: "text", text: `Conversion failed: ${errorType}` }],
+        content: [{ type: "text", text: `Conversion failed: ${message}` }],
       };
     }
+
+    const info = data["info"] as Record<string, unknown> | undefined;
 
     return {
       content: [
@@ -64,9 +75,8 @@ server.tool(
               from: fromUpper,
               to: toUpper,
               amount,
-              converted_amount: data["conversion_result"],
-              rate: data["conversion_rate"],
-              last_updated: data["time_last_update_utc"],
+              converted_amount: data["result"],
+              rate: info?.["rate"],
             },
             null,
             2
