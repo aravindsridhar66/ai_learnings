@@ -11,11 +11,11 @@ Each project lives in its own subdirectory with its own setup, dependencies, and
 | # | Project | Description | Status |
 |---|---------|-------------|--------|
 | 1 | [MCP Exchange Rates](./mcp_exchange_rates) | MCP server that converts currencies in real time using exchangerate.host | ✅ Complete |
-| 2 | Offline LLM App | Run a large language model fully locally, no API key required | 🔜 Coming soon |
-| 3 | RAG System | Retrieval-Augmented Generation — query your own documents with an LLM | 🔜 Coming soon |
-| 4 | Multi-Agent System | Orchestrate multiple AI agents working together on a task | 🔜 Coming soon |
-| 5 | Voice AI Study Coach | A voice-driven study assistant powered by an LLM | 🔜 Coming soon |
-| 6 | Model Tuning | Fine-tune a model on a custom dataset | 🔜 Coming soon |
+| 2 | Offline LLM App | TBD | 🔜 Coming soon |
+| 3 | RAG System | TBD | 🔜 Coming soon |
+| 4 | Multi-Agent System | TBD | 🔜 Coming soon |
+| 5 | Voice AI Study Coach | TBD | 🔜 Coming soon |
+| 6 | Model Tuning | TBD | 🔜 Coming soon |
 
 ---
 
